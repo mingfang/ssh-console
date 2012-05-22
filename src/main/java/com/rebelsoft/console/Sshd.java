@@ -39,21 +39,16 @@ import java.util.Set;
  * Time: 1:19 PM
  */
 public class Sshd {
+// ------------------------------ FIELDS ------------------------------
+
     private static final Logger LOGGER = Logger.getLogger(Sshd.class);
 
     private static final int DEFAULT_PORT = 8222;
     private int port = DEFAULT_PORT;
-    private static final String AUTO_REGISTER_PKG = "com.rebelsoft.console.commands";
-
-    public int getPort() {
-        return port;
-    }
-
-    public void setPort(int port) {
-        this.port = port;
-    }
 
     private CommandProcessorImpl commandProcessor;
+
+// --------------------------- CONSTRUCTORS ---------------------------
 
     public Sshd() {
         String hostName = null;
@@ -65,23 +60,29 @@ public class Sshd {
         System.setProperty("karaf.name", hostName);
     }
 
-    public void registerActionClass(final Class<? extends Action> actionClass) {
-        System.out.println("Registering action:" + actionClass.getSimpleName());
-        Command cmd = actionClass.getAnnotation(Command.class);
-        Function function = new AbstractCommand() {
-            @Override
-            public Action createNewAction() {
-                try {
-                    return ((Class<? extends Action>) actionClass).newInstance();
-                } catch (InstantiationException e) {
-                    throw new RuntimeException(e);
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        };
-        commandProcessor.addCommand(cmd.scope(), function, cmd.name());
+// --------------------- GETTER / SETTER METHODS ---------------------
 
+    public int getPort() {
+        return port;
+    }
+
+    public void setPort(int port) {
+        this.port = port;
+    }
+
+// -------------------------- OTHER METHODS --------------------------
+
+    public void autoRegister(String pkg) throws IOException, ClassNotFoundException {
+        Reflections reflections = new Reflections(
+                new ConfigurationBuilder()
+                        .filterInputsBy(new FilterBuilder.Include(FilterBuilder.prefix(pkg)))
+                        .setUrls(ClasspathHelper.forClassLoader())
+                        .setScanners(new TypeAnnotationsScanner())
+        );
+        Set<Class<?>> annotated = reflections.getTypesAnnotatedWith(Command.class);
+        for (Class<?> aClass : annotated) {
+            registerActionClass((Class<? extends Action>) aClass);
+        }
     }
 
     public void registerActionInstance(final Action action) {
@@ -122,11 +123,6 @@ public class Sshd {
         sshServerFactory.setStart(true);
         sshServerFactory.start();
         registerDefaultActions();
-        autoRegister();
-    }
-
-    public void stop() {
-
     }
 
     private void registerDefaultActions() throws IOException, ClassNotFoundException {
@@ -137,19 +133,25 @@ public class Sshd {
         registerActionClass(SshAction.class);
     }
 
-
-    private void autoRegister() throws IOException, ClassNotFoundException {
-        Reflections reflections = new Reflections(
-                new ConfigurationBuilder()
-                        .filterInputsBy(new FilterBuilder.Include(FilterBuilder.prefix(AUTO_REGISTER_PKG)))
-                        .setUrls(ClasspathHelper.forClassLoader())
-                        .setScanners(new TypeAnnotationsScanner())
-        );
-        Set<Class<?>> annotated = reflections.getTypesAnnotatedWith(Command.class);
-        for (Class<?> aClass : annotated) {
-            registerActionClass((Class<? extends Action>) aClass);
-        }
+    public void registerActionClass(final Class<? extends Action> actionClass) {
+        LOGGER.info("Registering action:" + actionClass.getSimpleName());
+        Command cmd = actionClass.getAnnotation(Command.class);
+        Function function = new AbstractCommand() {
+            @Override
+            public Action createNewAction() {
+                try {
+                    return ((Class<? extends Action>) actionClass).newInstance();
+                } catch (InstantiationException e) {
+                    throw new RuntimeException(e);
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        };
+        commandProcessor.addCommand(cmd.scope(), function, cmd.name());
     }
 
+    public void stop() {
 
+    }
 }
